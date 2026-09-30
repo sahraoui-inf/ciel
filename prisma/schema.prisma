@@ -1,0 +1,444 @@
+generator client {
+  provider = "prisma-client"
+  output  = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum Role {
+  SuperAdmin
+  Admin
+  Teacher
+  Student
+  Parent
+}
+
+enum AttendanceStatus {
+  Present
+  Absent
+  Late
+  Excused
+}
+
+enum EnrollmentStatus {
+  Pending
+  Active
+  Completed
+  Dropped
+  Expired
+}
+
+enum PaymentMethod {
+  Cash
+  Transfer
+  Receipt
+}
+
+enum PaymentStatus {
+  Pending
+  Paid
+  Overdue
+}
+
+enum PayoutStatus {
+  Pending
+  Approved
+  Paid
+}
+
+enum CertificateStatus {
+  Valid
+  Expired
+  Revoked
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  phone     String?
+  role      Role     @default(Student)
+  locale    String   @default("en")
+  theme     String   @default("light")
+  avatar    String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  studentProfile StudentProfile?
+  teacherProfile TeacherProfile?
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  adminDepartments AdminDepartment[]
+}
+
+model StudentProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  dateOfBirth      DateTime?
+  birthPlace       String?
+  nationalId       String?
+  emergencyContact String?
+  guardianName     String?
+  guardianPhone    String?
+  photo            String?
+  phone2           String?
+  bloodType        String?
+  fatherName       String?
+  fatherPhone      String?
+  notes            String?
+  status           String?
+  faculty          String?
+  university       String?
+  doctorType       String?
+  sector           String?
+  establishment    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id])
+  enrollments Enrollment[]
+  certificates Certificate[]
+}
+
+model TeacherProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  departmentId    String?
+  specialization  String?
+  hireDate        DateTime?
+  hourlyRate      Float    @default(0)
+  photo           String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user        User           @relation(fields: [userId], references: [id])
+  department  Department?    @relation(fields: [departmentId], references: [id])
+  classGroups ClassGroup[]
+  payouts     TeacherPayout[]
+}
+
+model Language {
+  id       String  @id @default(cuid())
+  name     String
+  code     String  @unique
+  isActive Boolean @default(true)
+
+  levels  Level[]
+  courses Course[]
+}
+
+model Level {
+  id           String  @id @default(cuid())
+  languageId   String
+  departmentId String?
+  name         String
+  code         String
+  order        Int
+  description  String?
+  price        Float   @default(0)
+  isActive     Boolean @default(true)
+
+  language   Language      @relation(fields: [languageId], references: [id])
+  department Department?   @relation(fields: [departmentId], references: [id])
+  courses    Course[]
+  certificates Certificate[]
+}
+
+model Course {
+  id                 String   @id @default(cuid())
+  languageId         String
+  levelId            String
+  departmentId       String?
+  name               String
+  code               String   @unique
+  description        String?
+  maxStudents        Int      @default(0)
+  registrationOpen   Boolean  @default(false)
+  registrationStart  DateTime?
+  registrationEnd    DateTime?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  language    Language      @relation(fields: [languageId], references: [id])
+  level       Level         @relation(fields: [levelId], references: [id])
+  department  Department?   @relation(fields: [departmentId], references: [id])
+  classGroups ClassGroup[]
+}
+
+model ClassGroup {
+  id          String   @id @default(cuid())
+  courseId    String
+  name        String
+  teacherId   String
+  room        String?
+  startDate   DateTime?
+  endDate     DateTime?
+  maxCapacity Int      @default(30)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  course      Course              @relation(fields: [courseId], references: [id])
+  teacher     TeacherProfile      @relation(fields: [teacherId], references: [id])
+  enrollments Enrollment[]
+  timeSlots   ClassGroupTimeSlot[]
+  exams       Exam[]
+}
+
+model TimeSlot {
+  id        String   @id @default(cuid())
+  name      String
+  nameAr    String?
+  days      String   // comma-separated day numbers: "0,2" = Sun, Tue
+  startTime String   // "09:00"
+  endTime   String   // "11:00"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  classGroups ClassGroupTimeSlot[]
+}
+
+model ClassGroupTimeSlot {
+  id           String   @id @default(cuid())
+  classGroupId String
+  timeSlotId   String
+  createdAt    DateTime @default(now())
+
+  classGroup ClassGroup @relation(fields: [classGroupId], references: [id], onDelete: Cascade)
+  timeSlot   TimeSlot   @relation(fields: [timeSlotId], references: [id])
+
+  @@unique([classGroupId, timeSlotId])
+}
+
+model Enrollment {
+  id                   String           @id @default(cuid())
+  studentId            String
+  classGroupId         String
+  prerequisiteCertId   String?
+  enrolledAt           DateTime         @default(now())
+  status               EnrollmentStatus @default(Pending)
+  isConfirmedByTeacher Boolean          @default(false)
+  teacherNotes       String?
+  paymentProofUrl    String?
+  expiresAt          DateTime?
+
+  student          StudentProfile @relation(fields: [studentId], references: [id])
+  classGroup       ClassGroup     @relation(fields: [classGroupId], references: [id])
+  prerequisiteCert Certificate?   @relation("prerequisiteCert", fields: [prerequisiteCertId], references: [id])
+  attendances      Attendance[]
+  grades           Grade[]
+  payments         Payment[]
+}
+
+model Attendance {
+  id           String           @id @default(cuid())
+  enrollmentId String
+  date         DateTime
+  status       AttendanceStatus @default(Present)
+  createdAt    DateTime         @default(now())
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
+}
+
+model Exam {
+  id          String   @id @default(cuid())
+  classGroupId String
+  name        String
+  date        DateTime?
+  maxScore    Float    @default(100)
+  createdAt   DateTime @default(now())
+
+  classGroup ClassGroup @relation(fields: [classGroupId], references: [id])
+  grades     Grade[]
+}
+
+model Grade {
+  id           String   @id @default(cuid())
+  enrollmentId String
+  examId       String
+  score        Float
+  gradedAt     DateTime @default(now())
+  gradedBy     String?
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
+  exam       Exam       @relation(fields: [examId], references: [id])
+}
+
+model Certificate {
+  id                String            @id @default(cuid())
+  studentId         String
+  levelId           String
+  certificateNumber String            @unique
+  issueDate         DateTime          @default(now())
+  expirationDate    DateTime
+  issuedBy          String?
+  status            CertificateStatus @default(Valid)
+
+  student      StudentProfile @relation(fields: [studentId], references: [id])
+  level        Level          @relation(fields: [levelId], references: [id])
+  enrollments  Enrollment[]    @relation("prerequisiteCert")
+}
+
+
+
+model Payment {
+  id           String        @id @default(cuid())
+  enrollmentId String
+  amount       Float
+  dueDate      DateTime
+  paidDate     DateTime?
+  status       PaymentStatus @default(Pending)
+  method       PaymentMethod @default(Cash)
+  receiptUrl   String?
+  verifiedById String?
+  createdAt    DateTime      @default(now())
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id])
+}
+
+model TeacherPayout {
+  id          String       @id @default(cuid())
+  teacherId   String
+  periodStart DateTime
+  periodEnd   DateTime
+  hoursWorked Float        @default(0)
+  rate        Float        @default(0)
+  grossAmount Float        @default(0)
+  deductions  Float        @default(0)
+  netAmount   Float        @default(0)
+  status      PayoutStatus @default(Pending)
+  paidAt      DateTime?
+  createdAt   DateTime     @default(now())
+
+  teacher TeacherProfile @relation(fields: [teacherId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  channel   String   @default("in_app")
+  title     String
+  messageEn String?
+  messageAr String?
+  data      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  action       String
+  tableAffected String?
+  recordId     String?
+  oldValue     String?
+  newValue     String?
+  ipAddress    String?
+  timestamp    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model CmsPage {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  titleEn        String
+  titleAr        String?
+  contentEn      String?
+  contentAr      String?
+  seoTitle       String?
+  seoDescription String?
+  seoKeywords    String?
+  isPublished    Boolean  @default(false)
+  publishedAt    DateTime?
+  updatedAt      DateTime @updatedAt
+}
+
+model Media {
+  id           String   @id @default(cuid())
+  url          String
+  type         String   @default("Image")
+  alt          String?
+  uploadedById String?
+  createdAt    DateTime @default(now())
+}
+
+model Event {
+  id             String   @id @default(cuid())
+  titleEn        String
+  titleAr        String?
+  descriptionEn  String?
+  descriptionAr  String?
+  date           DateTime?
+  location       String?
+  imageUrl       String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+}
+
+model Testimonial {
+  id          String  @id @default(cuid())
+  studentName String
+  contentEn   String
+  contentAr   String?
+  rating      Int     @default(5)
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Faq {
+  id          String  @id @default(cuid())
+  questionEn  String
+  questionAr  String?
+  answerEn    String
+  answerAr    String?
+  order       Int     @default(0)
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String
+  nameAr      String?
+  description String?
+  descriptionAr String?
+  code        String   @unique
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  courses Course[]
+  teachers TeacherProfile[]
+  levels Level[]
+  admins AdminDepartment[]
+}
+
+model AdminDepartment {
+  id           String   @id @default(cuid())
+  userId       String
+  departmentId String
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
+
+  @@unique([userId, departmentId])
+}
